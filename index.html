@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Школьный Портал — Прототип</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --panel-bg: #ffffff;
+            --sidebar-bg: #1e293b;
+            --sidebar-text: #f8fafc;
+            --sidebar-active: #3b82f6;
+            --text-main: #334155;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --accent-color: #2563eb;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- Окно авторизации (Центральный вход) --- */
+        .auth-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(15, 23, 42, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .auth-card {
+            background: var(--panel-bg);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            width: 100%;
+            max-width: 420px;
+            border: 1px solid var(--border-color);
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .auth-header h2 {
+            color: #0f172a;
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .auth-header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+            color: var(--text-main);
+            background-color: #f8fafc;
+            transition: all 0.2s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            background-color: #fff;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        /* --- Анимация кнопок (Эластичный эффект) --- */
+        .btn-elastic {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.2s ease;
+        }
+
+        .btn-elastic:hover {
+            transform: scaleX(1.08) scaleY(0.92);
+            background-color: #1d4ed8;
+        }
+
+        .btn-elastic:active {
+            transform: scaleX(0.92) scaleY(1.08);
+        }
+
+        /* --- Главный интерфейс --- */
+        .app-container {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* Левая боковая панель возможностей */
+        .sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            color: var(--sidebar-text);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .role-badge {
+            background-color: rgba(255, 255, 255, 0.15);
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            align-self: flex-start;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 1rem;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            color: #cbd5e1;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .sidebar-link:hover {
+            color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.05);
+            transform: scaleX(1.05) scaleY(0.95);
+        }
+
+        .sidebar-link.active {
+            background-color: var(--sidebar-active);
+            color: white;
+            font-weight: 600;
+        }
+
+        .sidebar-footer {
+            padding: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Основная контентная область */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: var(--bg-color);
+        }
+
+        .top-navbar {
+            height: 60px;
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2rem;
+        }
+
+        .top-navbar h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .user-meta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .content-body {
+            padding: 2rem;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .view-panel {
+            display: none;
+            animation: fadeIn 0.2s ease-in-out;
+        }
+
+        .view-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Карточки и Таблицы */
+        .card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: #0f172a;
+            border-bottom: 2px solid var(--bg-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        .data-table th {
+            background-color: #f8fafc;
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            color: #475569;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .data-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        /* Маркеры оценок (строгий стиль) */
+        .grade-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-right: 4px;
+        }
+        .grade-5 { background-color: #d1fae5; color: #065f46; }
+        .grade-4 { background-color: #dbeafe; color: #1e40af; }
+        .grade-3 { background-color: #fef3c7; color: #92400e; }
+        .grade-2 { background-color: #fee2e2; color: #991b1b; }
+
+        /* Элементы управления для учителя */
+        .teacher-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .select-sm {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            font-size: 0.85rem;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.75rem;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .btn-sm:hover {
+            transform: scaleX(1.1) scaleY(0.9);
+        }
+
+        .inline-form {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Виджеты статистики */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-box {
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-top: 0.25rem;
+        }
+
+        /* Блок чата */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 350px;
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .msg {
+            max-width: 75%;
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .msg.sent {
+            background-color: var(--accent-color);
+            color: white;
+            align-self: flex-end;
+        }
+
+        .msg.received {
+            background-color: #e2e8f0;
+            color: var(--text-main);
+            align-self: flex-start;
+        }
+
+        .chat-input-area {
+            display: flex;
+            padding: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            background: var(--panel-bg);
+            gap: 0.5rem;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ОКНО ВХОДА (AUTH HUB) -->
+    <div id="authOverlay" class="auth-overlay">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h2>Школьный Портал</h2>
+                <p>Централизованная авторизация системы</p>
+            </div>
+            <div class="form-group">
+                <label for="authRole">Выберите вашу роль</label>
+                <select id="authRole" class="form-control">
+                    <option value="teacher">Учитель (Управление & Аналитика)</option>
+                    <option value="student">Ученик (Дневник & Задания)</option>
+                    <option value="parent">Родитель (Контроль & Отчеты)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="authLogin">Логин / Электронная почта</label>
+                <input type="text" id="authLogin" class="form-control" placeholder="Введите логин..." value="demo_user">
+            </div>
+            <div class="form-group">
+                <label for="authPassword">Пароль</label>
+                <input type="password" id="authPassword" class="form-control" placeholder="••••••••" value="password123">
+            </div>
+            <button id="loginBtn" class="btn-elastic">Войти в систему</button>
+        </div>
+    </div>
+
+    <!-- ОСНОВНОЙ ИНТЕРФЕЙС ПРИЛОЖЕНИЯ -->
+    <div id="appContainer" class="app-container hidden">
+        
+        <!-- ЛЕВАЯ БОКОВАЯ ПАНЕЛЬ ВОЗМОЖНОСТЕЙ -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div id="currentRoleTitle" style="font-weight: 600; font-size: 1.1rem;">Кабинет</div>
+                <div id="roleBadge" class="role-badge">Роль</div>
+            </div>
+            
+            <!-- Динамическое меню возможностей (группируется под выбранную роль) -->
+            <ul id="sidebarMenu" class="sidebar-menu">
+                <!-- Пункты генерируются через JavaScript динамически -->
+            </ul>
+
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn-elastic" style="background-color: #334155; font-size: 0.9rem; padding: 0.5rem;">Выйти из смены</button>
+            </div>
+        </aside>
+
+        <!-- ОСНОВНАЯ КОНТЕНТНАЯ ОБЛАСТЬ -->
+        <main class="main-content">
+            <header class="top-navbar">
+                <h1 id="viewTitle">Главная страница</h1>
+                <div class="user-meta">
+                    <span id="userDisplay" style="font-weight: 500; font-size: 0.95rem; color: var(--text-muted);">Пользователь: </span>
+                </div>
+            </header>
+
+            <div class="content-body">
+                
+                <!-- [УЧИТЕЛЬ]: Панель управления учениками -->
+                <div id="view-teacher-students" class="view-panel">
+                    <div class="card">
+                        <h3>Добавление нового учащегося</h3>
+                        <div class="inline-form">
+                            <input type="text" id="newStudentName" class="form-control" placeholder="ФИО ученика..." style="max-width: 300px;">
+                            <button id="addStudentBtn" class="btn-elastic" style="max-width: 150px; padding: 0.5rem;">Добавить</button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Журнал класса и выставление оценок</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Ученик</th>
+                                    <th>Текущие оценки</th>
+                                    <th>Действие</th>
+                                </tr>
+                            </thead>
+                            <tbody id="teacherTableBody">
+                                <!-- Рендерится из JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- [УЧИТЕЛЬ]: Аналитика класса -->
+                <div id="view-teacher-analytics" class="view-panel">
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div>Коэффициент успеваемости класса</div>
+                            <div id="classPerformanceVal" class="stat-value">4.2</div>
+                        </div>
+                        <div class="stat-box">
+                            <div>Всего учащихся в базе</div>
+                            <div id="totalStudentsVal" class="stat-value">3</div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Сводный отчет успеваемости</h3>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">Автоматический расчет средних баллов по журналу:</p>
+                        <div id="analyticsReportList" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                            <!-- Заполняется из JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- [УЧЕНИК]: Домашнее задание -->
+                <div id="view-student-homework" class="view-panel">
+                    <div class="card">
+                        <h3>Текущие домашние задания</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Предмет</th>
+                                    <th>Задание</th>
+                                    <th>Срок сдачи</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Математика</strong></td>
+                                    <td>№ 432, № 434 (алгебраические уравнения)</td>
+                                    <td>Завтра</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Русский язык</strong></td>
+                                    <td>Упражнение 124, повторить правила союза</td>
+                                    <td>15.10.2026</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- [УЧЕНИК]: Электронный дневник -->
+                <div id="view-student-diary" class="view-panel">
+                    <div class="card">
+                        <h3>Мои текущие оценки (Электронный дневник)</h3>
+                        <div id="studentDiaryContent" style="margin-top: 1rem;">
+                            <!-- Заполняется из JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- [РОДИТЕЛЬ]: Контроль оценок -->
+                <div id="view-parent-control" class="view-panel">
+                    <div class="card">
+                        <h3>Успеваемость вашего ребенка</h3>
+                        <p style="margin-bottom: 1rem; font-size: 0.9rem; color: var(--text-muted);">Синхронизированные данные из журнала учителя:</p>
+                        <div id="parentControlContent">
+                            <!-- Заполняется из JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- [ОБЩЕЕ]: Интерактивный чат -->
+                <div id="view-common-chat" class="view-panel">
+                    <div class="card">
+                        <h3 id="chatViewHeader">Чат</h3>
+                        <div class="chat-container">
+                            <div id="chatMessages" class="chat-messages">
+                                <!-- Сообщения -->
+                            </div>
+                            <div class="chat-input-area">
+                                <input type="text" id="chatInputField" class="form-control" placeholder="Напишите сообщение...">
+                                <button id="sendChatMsgBtn" class="btn-elastic" style="width: auto; padding: 0 1.5rem;">Отправить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Исходная база данных в памяти для сквозной синхронизации ролей
+        const appState = {
+            currentRole: 'teacher',
+            currentUserLogin: 'demo_user',
+            students: [
+                { id: 1, name: "Иванов Петр Алексеевич", grades: [5, 4, 4, 5] },
+                { id: 2, name: "Смирнова Мария Владимировна", grades: [4, 5, 5, 5] },
+                { id: 3, name: "Кузнецов Дмитрий Игоревич", grades: [3, 4, 2, 3] }
+            ],
+            chatHistory: {
+                teacher: [
+                    { sender: 'received', text: 'Здравствуйте! Каковы успехи Дмитрия на этой неделе?' },
+                    { sender: 'sent', text: 'Приветствую! Мы подтянули уравнения, но нужно обратить внимание на домашние работы.' }
+                ],
+                class: [
+                    { sender: 'received', text: 'Ребята, напоминаю, завтра контрольная работа по геометрии!' },
+                    { sender: 'sent', text: 'А формулы площади круга будут включены?' }
+                ],
+                parent: [
+                    { sender: 'received', text: 'Уважаемые родители, родительское собрание состоится в пятницу в 18:00.' }
+                ]
+            },
+            currentChatType: 'teacher'
+        };
+
+        // Структура бокового меню возможностей для каждой роли
+        const menuStructures = {
+            teacher: [
+                { id: 'teacher-students', title: '👥 Журнал и ученики', view: 'teacher-students' },
+                { id: 'teacher-analytics', title: '📊 Аналитика и отчеты', view: 'teacher-analytics' },
+                { id: 'chat-t', title: '💬 Чат с родителями', view: 'common-chat', chatType: 'teacher' },
+                { id: 'chat-c', title: '💬 Общий чат класса', view: 'common-chat', chatType: 'class' }
+            ],
+            student: [
+                { id: 'student-diary', title: '📖 Электронный дневник', view: 'student-diary' },
+                { id: 'student-homework', title: '📝 Домашние задания', view: 'student-homework' },
+                { id: 'chat-c', title: '💬 Чат с классом', view: 'common-chat', chatType: 'class' }
+            ],
+            parent: [
+                { id: 'parent-control', title: '👁️ Контроль успеваемости', view: 'parent-control' },
+                { id: 'chat-p', title: '💬 Личный чат с учителем', view: 'common-chat', chatType: 'teacher' },
+                { id: 'chat-r', title: '💬 Чат родительского комитета', view: 'common-chat', chatType: 'parent' }
+            ]
+        };
+
+        // DOM элементы
+        const authOverlay = document.getElementById('authOverlay');
+        const appContainer = document.getElementById('appContainer');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const authRole = document.getElementById('authRole');
+        const authLogin = document.getElementById('authLogin');
+        const currentRoleTitle = document.getElementById('currentRoleTitle');
+        const roleBadge = document.getElementById('roleBadge');
+        const sidebarMenu = document.getElementById('sidebarMenu');
+        const viewTitle = document.getElementById('viewTitle');
+        const userDisplay = document.getElementById('userDisplay');
+
+        // Инициализация входа
+        loginBtn.addEventListener('click', () => {
+            appState.currentRole = authRole.value;
+            appState.currentUserLogin = authLogin.value || 'Пользователь';
+            
+            authOverlay.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+            
+            buildSidebar();
+            renderCurrentView();
+        });
+
+        // Выход из системы
+        logoutBtn.addEventListener('click', () => {
+            appContainer.classList.add('hidden');
+            authOverlay.classList.remove('hidden');
+        });
+
+        // Построение строгого бокового меню
+        function buildSidebar() {
+            sidebarMenu.innerHTML = '';
+            
+            // Настройка заголовков роли
+            const roleNames = { teacher: 'Учитель', student: 'Ученик', parent: 'Родитель' };
+            currentRoleTitle.textContent = `Кабинет: ${roleNames[appState.currentRole]}`;
+            roleBadge.textContent = appState.currentRole;
+            userDisplay.textContent = `Пользователь: ${appState.currentUserLogin} (${roleNames[appState.currentRole]})`;
+
+            const items = menuStructures[appState.currentRole];
+            items.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.className = 'sidebar-item';
+                
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = `sidebar-link ${index === 0 ? 'active' : ''}`;
+                a.textContent = item.title;
+                a.dataset.view = item.view;
+                if(item.chatType) a.dataset.chatType = item.chatType;
+
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
+                    a.classList.add('active');
+                    
+                    if(item.chatType) appState.currentChatType = item.chatType;
+                    switchView(item.view, item.title);
+                });
+
+                li.appendChild(a);
+                sidebarMenu.appendChild(li);
+            });
+            
+            // Установка дефолтного первого экрана
+            switchView(items[0].view, items[0].title);
+        }
+
+        // Переключение панелей
+        function switchView(viewId, title) {
+            viewTitle.textContent = title;
+            document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+            
+            const targetPanel = document.getElementById(`view-${viewId}`);
+            if(targetPanel) {
+                targetPanel.classList.add('active');
+            }
+            renderCurrentView();
+        }
+
+        // Центральный рендеринг активных данных
+        function renderCurrentView() {
+            // [1] Учительский интерфейс студентов
+            const teacherTableBody = document.getElementById('teacherTableBody');
+            if (teacherTableBody) {
+                teacherTableBody.innerHTML = '';
+                appState.students.forEach(student => {
+                    const tr = document.createElement('tr');
+                    
+                    let gradesHtml = '';
+                    student.grades.forEach(g => {
+                        gradesHtml += `<span class="grade-badge grade-${g}">${g}</span>`;
+                    });
+
+                    tr.innerHTML = `
+                        <td><strong>${student.name}</strong></td>
+                        <td>${gradesHtml || '<span style="color:var(--text-muted)">Нет оценок</span>'}</td>
+                        <td class="teacher-controls">
+                            <select class="select-sm" id="grade-sel-${student.id}">
+                                <option value="5">5</option>
+                                <option value="4">4</option>
+                                <option value="3">3</option>
+                                <option value="2">2</option>
+                            </select>
+                            <button class="btn-sm" onclick="addGrade(${student.id})">+</button>
+                        </td>
+                    `;
+                    teacherTableBody.appendChild(tr);
+                });
+            }
+
+            // [2] Учительская аналитика
+            const totalStudentsVal = document.getElementById('totalStudentsVal');
+            if (totalStudentsVal) {
+                totalStudentsVal.textContent = appState.students.length;
+                
+                let sumOfAverages = 0;
+                const reportList = document.getElementById('analyticsReportList');
+                reportList.innerHTML = '';
+
+                appState.students.forEach(student => {
+                    const avg = student.grades.length ? (student.grades.reduce((a,b)=>a+b, 0) / student.grades.length).toFixed(2) : "0.00";
+                    sumOfAverages += parseFloat(avg);
+                    
+                    reportList.innerHTML += `
+                        <div style="display:flex; justify-content:space-between; background:#fff; padding:0.5rem; border:1px solid var(--border-color); border-radius:4px;">
+                            <span>${student.name}</span>
+                            <span class="grade-badge grade-${Math.round(avg)}" style="width:50px; border-radius:12px;">${avg}</span>
+                        </div>
+                    `;
+                });
+                
+                const classAvg = appState.students.length ? (sumOfAverages / appState.students.length).toFixed(2) : "0.00";
+                document.getElementById('classPerformanceVal').textContent = classAvg;
+            }
+
+            // [3] Дневник ученика (для демонстрации берем первого ученика списка)
+            const studentDiaryContent = document.getElementById('studentDiaryContent');
+            if (studentDiaryContent && appState.students.length > 0) {
+                const targetStudent = appState.students[0]; // Симулируем первого ученика
+                let gradesHtml = '';
+                targetStudent.grades.forEach(g => {
+                    gradesHtml += `<span class="grade-badge grade-${g}" style="width:36px; height:36px; font-size:1.1rem; border-radius:6px;">${g}</span>`;
+                });
+                const avg = targetStudent.grades.length ? (targetStudent.grades.reduce((a,b)=>a+b, 0) / targetStudent.grades.length).toFixed(2) : "0.00";
+                
+                studentDiaryContent.innerHTML = `
+                    <p style="margin-bottom:1rem;">Ученик: <strong>${targetStudent.name}</strong></p>
+                    <div style="background:#f8fafc; padding:1rem; border-radius:6px; border:1px solid var(--border-color); margin-bottom:1rem;">
+                        ${gradesHtml || 'Оценок пока нет'}
+                    </div>
+                    <div>Средний балл успеваемости: <strong style="color:var(--accent-color); font-size:1.2rem;">${avg}</strong></div>
+                `;
+            }
+
+            // [4] Родительский контроль
+            const parentControlContent = document.getElementById('parentControlContent');
+            if (parentControlContent && appState.students.length > 0) {
+                const targetStudent = appState.students[0]; // Показывает привязанного ребенка
+                let gradesHtml = '';
+                targetStudent.grades.forEach(g => {
+                    gradesHtml += `<span class="grade-badge grade-${g}">${g}</span>`;
+                });
+                const avg = targetStudent.grades.length ? (targetStudent.grades.reduce((a,b)=>a+b, 0) / targetStudent.grades.length).toFixed(2) : "0.00";
+
+                parentControlContent.innerHTML = `
+                    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                        <div>ФИО Ребенка: <strong>${targetStudent.name}</strong></div>
+                        <div>Выставленные оценки: <div>${gradesHtml}</div></div>
+                        <div style="margin-top:0.5rem;">Итоговый рейтинг: <span class="grade-badge grade-${Math.round(avg)}" style="width:45px;">${avg}</span></div>
+                    </div>
+                `;
+            }
+
+            // [5] Обновление чата
+            renderChat();
+        }
+
+        // Функции действий учителя
+        window.addGrade = function(studentId) {
+            const select = document.getElementById(`grade-sel-${studentId}`);
+            const grade = parseInt(select.value);
+            const student = appState.students.find(s => s.id === studentId);
+            if(student) {
+                student.grades.push(grade);
+                renderCurrentView();
+            }
+        };
+
+        // Добавление студента
+        document.getElementById('addStudentBtn').addEventListener('click', () => {
+            const input = document.getElementById('newStudentName');
+            const name = input.value.trim();
+            if(name) {
+                const newId = appState.students.length ? Math.max(...appState.students.map(s => s.id)) + 1 : 1;
+                appState.students.push({
+                    id: newId,
+                    name: name,
+                    grades: []
+                });
+                input.value = '';
+                renderCurrentView();
+            }
+        });
+
+        // Работа с интерактивным чатом
+        function renderChat() {
+            const chatMessages = document.getElementById('chatMessages');
+            if (!chatMessages) return;
+
+            const chatHeaders = { teacher: 'Связь Родитель ↔ Учитель', class: 'Общий форум (Классный руководитель)', parent: 'Чат Родительского Комитета' };
+            document.getElementById('chatViewHeader').textContent = chatHeaders[appState.currentChatType] || 'Чат';
+
+            chatMessages.innerHTML = '';
+            const history = appState.chatHistory[appState.currentChatType] || [];
+            history.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = `msg ${msg.sender}`;
+                div.textContent = msg.text;
+                chatMessages.appendChild(div);
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Отправка сообщений
+        function sendChatMessage() {
+            const input = document.getElementById('chatInputField');
+            const text = input.value.trim();
+            if(text) {
+                appState.chatHistory[appState.currentChatType].push({
+                    sender: 'sent',
+                    text: text
+                });
+                input.value = '';
+                renderChat();
+
+                // Автоматическая симуляция ответа через 1.5 секунды
+                setTimeout(() => {
+                    appState.chatHistory[appState.currentChatType].push({
+                        sender: 'received',
+                        text: 'Принято. Ответ обрабатывается системой или классным руководителем.'
+                    });
+                    renderChat();
+                }, 1500);
+            }
+        }
+
+        document.getElementById('sendChatMsgBtn').addEventListener('click', sendChatMessage);
+        document.getElementById('chatInputField').addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') sendChatMessage();
+        });
+
+    </script>
+</body>
+</html>
