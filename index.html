@@ -1462,8 +1462,10 @@
         // ============================================================
         const net = {
             peer: null, isHost: false, roomId: '', myId: '', conns: new Map(),
-            participants: new Map(), seen: {}, status: 'offline', joining: false
+            participants: new Map(), seen: {}, status: 'offline', joining: false,
+            dialing: {}, restartTimer: null, peerGen: 0, lastUnavailToast: 0
         };
+        let netLeaving = false;
         function peerLibReady() { return typeof Peer !== 'undefined'; }
         function randomRoomId() {
             const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1500,30 +1502,44 @@
         }
         function registerConn(conn, incoming) {
             if (!conn) return;
+            const targetId = conn.peer;
+            let opened = false, closed = false;
             conn.on('open', function () {
-                net.conns.set(conn.peer, conn);
+                opened = true;
+                delete net.dialing[targetId];
+                net.conns.set(targetId, conn);
                 try { conn.send(Object.assign({ type: 'hello' }, myPresence())); } catch (e) {}
                 if (net.isHost) {
                     const others = [];
                     net.conns.forEach(function (c, id) {
-                        if (id === conn.peer) return;
+                        if (id === targetId) return;
                         const p = net.participants.get(id) || {};
                         others.push({ id: id, name: p.name, role: p.role, subject: p.subject });
                     });
                     try { conn.send({ type: 'peers', peers: others }); } catch (e) {}
-                    netBroadcast(Object.assign({ type: 'newpeer' }, myPresence()), conn.peer);
+                    netBroadcast(Object.assign({ type: 'newpeer' }, myPresence()), targetId);
                 }
                 renderOnlineCounter();
                 renderChat();
             });
             conn.on('data', function (data) { handleNetData(data, conn); });
             conn.on('close', function () {
-                net.conns.delete(conn.peer);
-                net.participants.delete(conn.peer);
+                if (closed) return;
+                closed = true;
+                opened = false;
+                delete net.dialing[targetId];
+                net.conns.delete(targetId);
+                net.participants.delete(targetId);
                 renderOnlineCounter();
                 renderChat();
+                // Самовосстановление: перезваниваем, пока мы в комнате
+                if (net.roomId && net.peer && !netLeaving) retryDial(targetId, 3, 2500);
             });
-            conn.on('error', function () {});
+            conn.on('error', function () {
+                if (opened) return; // ошибка на живом канале придёт через close
+                delete net.dialing[targetId];
+                if (net.roomId && !netLeaving) retryDial(targetId, 4, 2000);
+            });
         }
         function handleNetData(data, conn) {
             if (!data || typeof data !== 'object') return;
@@ -1532,8 +1548,8 @@
                 if (fromId && fromId !== net.myId) {
                     net.participants.set(fromId, { name: data.name, role: data.role, subject: data.subject });
                 }
-                if (data.type === 'newpeer' && !net.conns.has(fromId) && net.peer && !net.isHost) {
-                    try { registerConn(net.peer.connect(fromId, { reliable: true, metadata: myPresence() }), false); } catch (e) {}
+                if (data.type === 'newpeer' && !net.conns.has(fromId) && !net.isHost) {
+                    dial(fromId, 3);
                 }
                 renderOnlineCounter();
                 renderChat();
@@ -1543,7 +1559,7 @@
                 (data.peers || []).forEach(function (p) {
                     if (!p.id || p.id === net.myId || net.conns.has(p.id)) return;
                     net.participants.set(p.id, { name: p.name, role: p.role, subject: p.subject });
-                    try { registerConn(net.peer.connect(p.id, { reliable: true, metadata: myPresence() }), false); } catch (e) {}
+                    dial(p.id, 3);
                 });
                 renderOnlineCounter();
                 return;
@@ -1569,8 +1585,6 @@
             if (netReady() && net.roomId === clean) { showToast('Вы уже в комнате ' + clean, 'info'); return; }
             leaveRoom();
             net.roomId = clean;
-            net.joining = true;
-            setNetStatus('🔄 Подключение к комнате ' + clean + '…');
             storage.set(STORAGE_PREFIX + 'room', clean);
             const roomInput = D('roomInput');
             if (roomInput) roomInput.value = clean;
@@ -1579,61 +1593,161 @@
                     try { history.replaceState(null, '', '#' + clean); } catch (e) {}
                 }
             } catch (e) {}
+            startAsHost(clean, true, 0);
+        }
+        function startAsHost(room, firstAttempt, retries) {
+            retries = (typeof retries === 'number') ? retries : 0;
+            const gen = ++net.peerGen;
+            if (!room || !net.roomId) return;
+            net.status = 'connecting';
+            net.joining = true;
+            setNetStatus('🔄 Подключение к комнате ' + room + '…');
+            let peer;
+            try { peer = new Peer(hostIdFor(room), { debug: 0 }); } catch (e) {
+                net.joining = false;
+                markNetFatal('WebRTC недоступен в этом браузере');
+                return;
+            }
+            net.peer = peer;
+            peer.on('open', function (id) {
+                if (gen !== net.peerGen) { try { peer.destroy(); } catch (e) {} return; }
+                net.myId = id; net.isHost = true; net.status = 'host'; net.joining = false;
+                net.participants.set(id, { name: myName(), role: appState.currentRole });
+                setNetStatus('🟢 Хост комнаты ' + room, 'on');
+                renderOnlineCounter();
+                showToast('Вы — хост комнаты ' + room + '. Поделитесь ссылкой!', 'success');
+            });
+            peer.on('connection', function (conn) { registerConn(conn, true); });
+            peer.on('disconnected', function () {
+                if (gen !== net.peerGen) return;
+                setNetStatus('🟡 Сигнал потерян — восстанавливаем…', 'on');
+                schedulePeerRestart(true);
+            });
+            peer.on('error', function (err) {
+                if (gen !== net.peerGen) return;
+                const type = err && err.type ? err.type : 'unknown';
+                if (type === 'unavailable-id') {
+                    if (firstAttempt) { net.joining = false; becomeClient(room, 2); return; }
+                    if (retries > 0) {
+                        setTimeout(function () { if (gen === net.peerGen) startAsHost(room, false, retries - 1); }, 2500);
+                        return;
+                    }
+                    net.joining = false;
+                    becomeClient(room, 2);
+                    return;
+                }
+                handleNetError(type);
+            });
+        }
+        function becomeClient(room, retries) {
+            retries = (typeof retries === 'number') ? retries : 2;
+            const gen = ++net.peerGen;
+            try { if (net.peer) net.peer.destroy(); } catch (e) {}
+            let peer;
+            try { peer = new Peer(null, { debug: 0 }); } catch (e) {
+                net.joining = false;
+                markNetFatal('WebRTC недоступен в этом браузере');
+                return;
+            }
+            net.peer = peer;
+            net.isHost = false;
+            net.status = 'connecting';
+            peer.on('open', function (id) {
+                if (gen !== net.peerGen) { try { peer.destroy(); } catch (e) {} return; }
+                net.myId = id; net.status = 'client'; net.joining = false;
+                net.participants.set(id, { name: myName(), role: appState.currentRole });
+                setNetStatus('🟢 Участник комнаты ' + room, 'on');
+                renderOnlineCounter();
+                dial(hostIdFor(room), 5);
+                showToast('Вы подключились к комнате ' + room, 'success');
+            });
+            peer.on('connection', function (conn) { registerConn(conn, false); });
+            peer.on('disconnected', function () {
+                if (gen !== net.peerGen) return;
+                setNetStatus('🟡 Сигнал потерян — восстанавливаем…', 'on');
+                schedulePeerRestart(false);
+            });
+            peer.on('error', function (err) {
+                if (gen !== net.peerGen) return;
+                const type = err && err.type ? err.type : 'unknown';
+                if (type === 'unavailable-id') {
+                    if (retries > 0) { setTimeout(function () { becomeClient(room, retries - 1); }, 2000); return; }
+                    markNetFatal('Не удалось получить сетевой ID');
+                    return;
+                }
+                handleNetError(type);
+            });
+        }
+        // Классификация ошибок: мелкие не роняют сессию
+        function handleNetError(type) {
+            if (type === 'peer-unavailable') {
+                // Не дозвонились до одного участника — сеть жива, статус не трогаем
+                const now = Date.now();
+                if (!net.lastUnavailToast || now - net.lastUnavailToast > 8000) {
+                    net.lastUnavailToast = now;
+                    showToast('Участник временно недоступен — сеть продолжает работать', 'info');
+                }
+                return;
+            }
+            if (type === 'network' || type === 'socket-error' || type === 'socket-closed') {
+                setNetStatus('🟡 Сигнал потерян — восстанавливаем…', 'on');
+                schedulePeerRestart(net.isHost);
+                return;
+            }
+            markNetFatal('Сервер сигналов: ' + type);
+        }
+        function markNetFatal(text) {
+            net.status = 'error';
+            net.joining = false;
+            setNetStatus('🔴 ' + text + ' — нажмите «Подключиться» позже', 'err');
+        }
+        function schedulePeerRestart(preferHost) {
+            if (net.restartTimer || !net.roomId || netLeaving) return;
+            net.status = 'reconnecting';
+            net.restartTimer = setTimeout(function () {
+                net.restartTimer = null;
+                if (!net.roomId || netLeaving) return;
+                if (preferHost) startAsHost(net.roomId, false, 2);
+                else becomeClient(net.roomId, 2);
+            }, 1800);
+        }
+        // Дозвон с повторами (на случай, когда хост ещё не поднялся или связь моргнула)
+        function dial(targetId, attemptsLeft, delayMs) {
+            if (!net.peer || !net.roomId || netLeaving) return;
+            if (!targetId || targetId === net.myId) return;
+            if (net.conns.has(targetId)) return;
+            if (net.dialing[targetId]) return;
+            net.dialing[targetId] = true;
             try {
-                const peer = new Peer(hostIdFor(clean), { debug: 0 });
-                net.peer = peer;
-                peer.on('open', function (id) {
-                    net.myId = id; net.isHost = true; net.status = 'host'; net.joining = false;
-                    net.participants.set(id, { name: myName(), role: appState.currentRole });
-                    setNetStatus('🟢 Хост комнаты ' + clean, 'on');
-                    renderOnlineCounter();
-                    showToast('Вы — хост комнаты ' + clean + '. Отправьте друзьям ссылку!', 'success');
-                });
-                peer.on('connection', function (conn) { registerConn(conn, true); });
-                peer.on('error', function (err) {
-                    const type = err && err.type ? err.type : 'unknown';
-                    if (type === 'unavailable-id' && !net.isHost) { becomeClient(clean); return; }
-                    net.status = 'error'; net.joining = false;
-                    setNetStatus('🔴 Сеть: ' + type + ' — локальный режим', 'err');
-                });
-                peer.on('disconnected', function () { try { peer.reconnect(); } catch (e) {} });
+                const conn = net.peer.connect(targetId, { reliable: true, metadata: myPresence() });
+                registerConn(conn, false);
             } catch (e) {
-                net.status = 'error'; net.joining = false;
-                setNetStatus('🔴 Ошибка WebRTC — локальный режим', 'err');
+                delete net.dialing[targetId];
+                retryDial(targetId, attemptsLeft, delayMs);
             }
         }
-        function becomeClient(room) {
-            try { if (net.peer) net.peer.destroy(); } catch (e) {}
-            try {
-                const peer = new Peer(null, { debug: 0 });
-                net.peer = peer;
-                peer.on('open', function (id) {
-                    net.myId = id; net.isHost = false; net.status = 'client'; net.joining = false;
-                    net.participants.set(id, { name: myName(), role: appState.currentRole });
-                    setNetStatus('🟢 Участник комнаты ' + room, 'on');
-                    const conn = peer.connect(hostIdFor(room), { reliable: true, metadata: myPresence() });
-                    registerConn(conn, false);
-                    renderOnlineCounter();
-                    showToast('Вы подключились к комнате ' + room, 'success');
-                });
-                peer.on('connection', function (conn) { registerConn(conn, false); });
-                peer.on('error', function (err) {
-                    net.status = 'error'; net.joining = false;
-                    setNetStatus('🔴 Сеть: ' + (err && err.type ? err.type : 'unknown') + ' — локальный режим', 'err');
-                });
-            } catch (e) {
-                net.status = 'error'; net.joining = false;
-                setNetStatus('🔴 Ошибка WebRTC — локальный режим', 'err');
-            }
+        function retryDial(targetId, attemptsLeft, delayMs) {
+            if (!net.roomId || netLeaving) return;
+            if (attemptsLeft <= 0) return;
+            setTimeout(function () {
+                if (!net.peer || netLeaving || !net.roomId) return;
+                delete net.dialing[targetId];
+                dial(targetId, attemptsLeft - 1, (delayMs || 2000) * 1.6);
+            }, delayMs || 2000);
         }
         function leaveRoom() {
+            netLeaving = true;
+            ++net.peerGen; // обесценить обработчики старого пира
+            if (net.restartTimer) { clearTimeout(net.restartTimer); net.restartTimer = null; }
+            net.dialing = {};
             net.conns.forEach(function (c) { try { c.close(); } catch (e) {} });
             net.conns.clear();
             net.participants.clear();
             if (net.peer) { try { net.peer.destroy(); } catch (e) {} }
-            net.peer = null; net.myId = ''; net.isHost = false; net.status = 'offline';
+            net.peer = null; net.myId = ''; net.isHost = false; net.status = 'offline'; net.joining = false;
             setNetStatus('⚪ Локальный режим');
             renderOnlineCounter();
+            netLeaving = false;
         }
         // Комната: сначала из ссылки (#КОМНАТА), затем сохранённая, затем случайная
         function resolveRoom() {
@@ -1745,7 +1859,7 @@
             if (viewId === 'analytics' || viewId === 'aidash') {
                 setTimeout(function () { animateStatsIn(target); }, 30);
             }
-            if (viewId === 'chat' && !netReady() && !net.joining && peerLibReady()) autoJoinSavedRoom();
+            if (viewId === 'chat' && net.status === 'offline' && !net.joining && peerLibReady()) autoJoinSavedRoom();
         }
 
         // ============================================================
@@ -2309,7 +2423,7 @@
             input.value = '';
             renderChat();
 
-            const sentCount = netReady()
+            const sentCount = (net.conns.size > 0)
                 ? (chatId.indexOf('dm|') === 0 ? (sendDmTarget({ type: 'msg', msg: msg }) ? 1 : 0) : netBroadcast({ type: 'msg', msg: msg }))
                 : 0;
             if (!sentCount) {
@@ -2452,9 +2566,32 @@
         (function initNet() {
             const roomInput = D('roomInput');
             if (roomInput) roomInput.value = resolveRoom();
-            if (!peerLibReady()) setNetStatus('⚪ Локальный режим (нет библиотеки PeerJS)', 'err');
-            else setNetStatus('⚪ Готов к подключению — откройте вкладку «Чаты»');
+            if (!peerLibReady()) {
+                setNetStatus('⚪ Загружаем библиотеку сети…', 'err');
+                loadPeerFallback();
+            } else setNetStatus('⚪ Готов к подключению — откройте вкладку «Чаты»');
         })();
+        // Если основной CDN не загрузился — резервный; плюс дождаться медленной загрузки
+        function loadPeerFallback() {
+            try {
+                const alt = document.createElement('script');
+                alt.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
+                alt.onload = function () {
+                    setNetStatus('⚪ Сеть готова — откройте вкладку «Чаты»');
+                    if (!net.joining && net.status === 'offline' && appState.activeView === 'chat') autoJoinSavedRoom();
+                };
+                const hostEl = document.head || document.body;
+                if (hostEl) hostEl.appendChild(alt);
+            } catch (e) {}
+            waitForPeerLib(0);
+        }
+        function waitForPeerLib(tries) {
+            if (peerLibReady()) {
+                if (!net.joining && net.status === 'offline' && appState.activeView === 'chat') autoJoinSavedRoom();
+                return;
+            }
+            if (tries < 40) setTimeout(function () { waitForPeerLib(tries + 1); }, 500);
+        }
 
         // Экспорт для автотестов (не влияет на работу приложения)
         if (typeof globalThis !== 'undefined') {
@@ -2468,6 +2605,8 @@
                 sendChatMessage: sendChatMessage, renderChat: renderChat, renderCurrentView: renderCurrentView,
                 renderJournalGrid: renderJournalGrid, renderDiary: renderDiary, switchView: switchView,
                 joinRoom: joinRoom, leaveRoom: leaveRoom, handleNetData: handleNetData, becomeClient: becomeClient,
+                startAsHost: startAsHost, handleNetError: handleNetError, schedulePeerRestart: schedulePeerRestart,
+                registerConn: registerConn, dial: dial, retryDial: retryDial,
                 markMessageRead: markMessageRead, receiveNetMessage: receiveNetMessage, resolveRoom: resolveRoom,
                 studentAvg: studentAvg, classRank: classRank, predictAnnual: predictAnnual,
                 recommendations: recommendations, monthlyAverages: monthlyAverages, absentCount: absentCount,
